@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateTransitionEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">mini-circuit-breaker</a> &gt; <a href="index.source.html" class="el_package">com.george.circuitbreaker.core</a> &gt; <span class="el_source">StateTransitionEvent.java</span></div><h1>StateTransitionEvent.java</h1><pre class="source lang-java linenums">package com.george.circuitbreaker.core;
+
+import java.util.Objects;
+
+public final class StateTransitionEvent {
+        private final State from;
+        private final State to;
+        private final TransitionReason reason;
+        private final long timestampNanos;
+
+<span class="fc" id="L11">    public StateTransitionEvent(State from, State to, TransitionReason reason, long timestampNanos) {</span>
+<span class="fc" id="L12">        this.from = Objects.requireNonNull(from);</span>
+<span class="fc" id="L13">        this.to=  Objects.requireNonNull(to);</span>
+<span class="fc" id="L14">        this.reason = Objects.requireNonNull(reason);</span>
+<span class="fc" id="L15">        this.timestampNanos = timestampNanos;</span>
+<span class="fc" id="L16">    }</span>
+
+    public State getFrom() {
+<span class="fc" id="L19">        return from;</span>
+    }
+
+    public State getTo() {
+<span class="fc" id="L23">        return to;</span>
+    }
+
+    public TransitionReason getReason() {
+<span class="fc" id="L27">        return reason;</span>
+    }
+
+    public long getTimestampNanos() {
+<span class="fc" id="L31">        return timestampNanos;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L36">        return &quot;StateTransitionEvent{&quot;+from +&quot;-&gt;&quot; + to</span>
+                +&quot;, reason=&quot; + reason + &quot;, timestampNanos=&quot; + timestampNanos+ '}';
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

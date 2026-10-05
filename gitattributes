@@ -1,0 +1,12 @@
+# Normalize line endings: store and check out as LF everywhere (including Windows)
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.jar binary

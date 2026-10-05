@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SlidingWindow.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">mini-circuit-breaker</a> &gt; <a href="index.source.html" class="el_package">com.george.circuitbreaker.core</a> &gt; <span class="el_source">SlidingWindow.java</span></div><h1>SlidingWindow.java</h1><pre class="source lang-java linenums">package com.george.circuitbreaker.core;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.LongSupplier;
+
+/**
+ * Sliding window of success/failure counts with one-second resolution.
+ *
+ * &lt;h2&gt;Design&lt;/h2&gt;
+ * &lt;p&gt;The window is a ring of {@code windowSizeInSeconds} buckets. A call made during second
+ * {@code s} is counted in bucket {@code s mod N}. Every bucket remembers which second it belongs
+ * to. The first write of a new second lazily clears and re-tags the bucket (&quot;rotation&quot;), so no
+ * background thread is needed. A bucket contributes to a snapshot only if its second lies within
+ * the last {@code N} seconds.
+ *
+ * &lt;p&gt;Writes are lock-free ({@link LongAdder}) except for rotation, which is a short synchronized
+ * block executed at most once per bucket and second. Reads take no lock: for every bucket the
+ * snapshot reads the bucket's second, then its counters, then the second again, and skips the
+ * bucket if the second changed in between (an optimistic, seqlock-style version check).
+ *
+ * &lt;h2&gt;Accuracy&lt;/h2&gt;
+ * &lt;p&gt;Statistics are &lt;em&gt;approximate&lt;/em&gt; while a bucket is being rotated: a write racing with the
+ * rotation may be attributed to the new second, and a snapshot racing with it may skip the bucket
+ * or see it briefly cleared. That is acceptable for circuit breaking, where thresholds are
+ * statistical anyway.
+ *
+ * &lt;h2&gt;Time&lt;/h2&gt;
+ * &lt;p&gt;Time comes from an injected nano clock (monotonic, arbitrary origin, possibly negative), so
+ * tests can drive time deterministically. Only differences between readings are meaningful.
+ *
+ * &lt;p&gt;This class is an implementation detail of {@link CircuitBreaker} and is not public API.
+ */
+final class SlidingWindow {
+
+    private static final long EMPTY = Long.MIN_VALUE;
+
+    private final int windowSizeInSeconds;
+    private final Bucket[] buckets;
+    private final LongSupplier nanoClock;
+
+
+<span class="fc" id="L43">    SlidingWindow(int windowSizeInSeconds, LongSupplier nanoClock) {</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (windowSizeInSeconds &lt;= 0) {</span>
+<span class="fc" id="L45">            throw new IllegalArgumentException(&quot;windowSizeInSeconds must be positive&quot;);</span>
+        }
+<span class="fc" id="L47">        this.windowSizeInSeconds = windowSizeInSeconds;</span>
+<span class="fc" id="L48">        this.nanoClock = nanoClock;</span>
+<span class="fc" id="L49">        this.buckets = new Bucket[windowSizeInSeconds];</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (int i = 0; i &lt; windowSizeInSeconds; i++) {</span>
+<span class="fc" id="L51">            this.buckets[i] = new Bucket(EMPTY);</span>
+        }
+<span class="fc" id="L53">    }</span>
+
+    private long getCurrentSecond() {
+<span class="fc" id="L56">        return TimeUnit.NANOSECONDS.toSeconds(nanoClock.getAsLong());</span>
+    }
+
+    private Bucket bucketFor(long second) {
+<span class="fc" id="L60">        int index = Math.floorMod(second, windowSizeInSeconds);</span>
+<span class="fc" id="L61">        Bucket b = buckets[index];</span>
+<span class="fc" id="L62">        b.rotateIfStale(second);</span>
+<span class="fc" id="L63">        return b;</span>
+    }
+
+    public void recordSuccess() {
+<span class="fc" id="L67">        long second = getCurrentSecond();</span>
+<span class="fc" id="L68">        bucketFor(second).successCount.increment();</span>
+<span class="fc" id="L69">    }</span>
+
+    public void recordFailure() {
+<span class="fc" id="L72">        long second = getCurrentSecond();</span>
+<span class="fc" id="L73">        bucketFor(second).failureCount.increment();</span>
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * get teh snapshot of the sliding window
+     *
+     */
+    Snapshot getSnapshot() {
+<span class="fc" id="L81">        long currentSecond = getCurrentSecond();</span>
+<span class="fc" id="L82">        long totalSuccess = 0L;</span>
+<span class="fc" id="L83">        long totalFailure = 0L;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (Bucket bucket : buckets) {</span>
+            // read verison 1
+<span class="fc" id="L86">            long  epochBefore = bucket.getEpochSecond();</span>
+            //read data without lock
+<span class="fc" id="L88">            long succ = bucket.successCount.sum();</span>
+<span class="fc" id="L89">            long fail = bucket.failureCount.sum();</span>
+            //read version 2
+<span class="fc" id="L91">            long epochAfter = bucket.getEpochSecond();</span>
+            //check version
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">            if (epochBefore == epochAfter &amp;&amp; epochBefore != EMPTY) {</span>
+<span class="fc" id="L94">                long diff = currentSecond - epochBefore;</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">                if ( diff &gt;=0 &amp;&amp; diff &lt; windowSizeInSeconds) {</span>
+<span class="fc" id="L96">                    totalSuccess += succ;</span>
+<span class="fc" id="L97">                    totalFailure += fail;</span>
+                }
+
+            }
+
+        }
+<span class="fc" id="L103">        return new Snapshot(totalSuccess, totalFailure);</span>
+    }
+
+    void reset() {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (Bucket bucket : buckets) {</span>
+<span class="fc" id="L108">            bucket.clear();</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Bucket nested class
+     */
+     private static final class Bucket {
+        private volatile long epochSecond;
+<span class="fc" id="L117">        private final LongAdder successCount = new LongAdder();</span>
+<span class="fc" id="L118">        private final LongAdder failureCount = new LongAdder();</span>
+
+<span class="fc" id="L120">        private Bucket(long epochSecond) {</span>
+<span class="fc" id="L121">            this.epochSecond = epochSecond;</span>
+<span class="fc" id="L122">        }</span>
+
+        /**
+         * check if the bucket is expired based on the current epoch second
+         */
+        synchronized void rotateIfStale(long second) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (this.epochSecond != second) {</span>
+<span class="fc" id="L129">                this.successCount.reset();</span>
+<span class="fc" id="L130">                this.failureCount.reset();</span>
+<span class="fc" id="L131">                this.epochSecond = second;</span>
+            }
+<span class="fc" id="L133">        }</span>
+
+        synchronized void clear() {
+<span class="fc" id="L136">            this.successCount.reset();</span>
+<span class="fc" id="L137">            this.failureCount.reset();</span>
+<span class="fc" id="L138">            this.epochSecond = EMPTY;</span>
+<span class="fc" id="L139">        }</span>
+
+        long getEpochSecond() {
+<span class="fc" id="L142">            return epochSecond;</span>
+        }
+
+    }
+
+    /**
+     * Snapshot nest class
+     */
+     static final class Snapshot {
+        private final long totalSuccess;
+        private final long totalFailure;
+
+<span class="fc" id="L154">        public Snapshot(long totalSuccess, long totalFailure) {</span>
+<span class="fc" id="L155">            this.totalSuccess = totalSuccess;</span>
+<span class="fc" id="L156">            this.totalFailure = totalFailure;</span>
+<span class="fc" id="L157">        }</span>
+
+        long getTotalSuccess() {
+<span class="fc" id="L160">            return totalSuccess;</span>
+        }
+
+        long getTotalFailure() {
+<span class="fc" id="L164">            return totalFailure;</span>
+        }
+
+        long getTotalCalls() {
+<span class="fc" id="L168">            return totalSuccess + totalFailure;</span>
+        }
+
+        double getFailureRate() {
+<span class="fc" id="L172">            long total = getTotalCalls();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (total == 0) {</span>
+<span class="fc" id="L174">                return 0.0;</span>
+
+            }
+            else {
+<span class="fc" id="L178">                return (double) totalFailure/total;</span>
+            }
+
+        }
+
+    }
+
+
+
+}
+
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,12 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+mini-circuit-breaker,com.george.circuitbreaker.core,CallNotPermittedException,0,4,0,0,0,2,0,1,0,1
+mini-circuit-breaker,com.george.circuitbreaker.core,CircuitBreakerConfig,16,58,0,0,2,17,1,9,1,9
+mini-circuit-breaker,com.george.circuitbreaker.core,StateTransitionEvent,0,46,0,0,0,11,0,6,0,6
+mini-circuit-breaker,com.george.circuitbreaker.core,CircuitBreaker,12,386,3,41,4,96,4,38,1,19
+mini-circuit-breaker,com.george.circuitbreaker.core,SlidingWindow.Snapshot,0,37,0,2,0,11,0,6,0,5
+mini-circuit-breaker,com.george.circuitbreaker.core,CircuitBreakerConfig.Builder,0,239,1,29,0,59,1,30,0,16
+mini-circuit-breaker,com.george.circuitbreaker.core,SlidingWindow.Bucket,0,44,0,2,0,15,0,5,0,4
+mini-circuit-breaker,com.george.circuitbreaker.core,State,0,21,0,0,0,4,0,1,0,1
+mini-circuit-breaker,com.george.circuitbreaker.core,TransitionReason,0,33,0,0,0,6,0,1,0,1
+mini-circuit-breaker,com.george.circuitbreaker.core,LoggingStateTransitionsListener,10,41,0,0,1,7,1,2,1,2
+mini-circuit-breaker,com.george.circuitbreaker.core,SlidingWindow,0,168,2,14,0,37,2,13,0,7

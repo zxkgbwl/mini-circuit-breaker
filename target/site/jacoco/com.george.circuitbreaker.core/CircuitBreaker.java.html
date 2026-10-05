@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CircuitBreaker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">mini-circuit-breaker</a> &gt; <a href="index.source.html" class="el_package">com.george.circuitbreaker.core</a> &gt; <span class="el_source">CircuitBreaker.java</span></div><h1>CircuitBreaker.java</h1><pre class="source lang-java linenums">package com.george.circuitbreaker.core;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.logging.Logger;
+import java.util.logging.Level;
+
+/**
+ * A lock-free circuit breaker.
+ *
+ * &lt;p&gt;The breaker is a state machine with three states (see {@link State}):
+ * &lt;pre&gt;
+ *   CLOSED --(failure rate or count exceeded)--&gt; OPEN
+ *   OPEN   --(wait duration elapsed)-----------&gt; HALF_OPEN
+ *   HALF_OPEN --(all trial calls succeeded)----&gt; CLOSED
+ *   HALF_OPEN --(any trial call failed)--------&gt; OPEN
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;Usage:
+ * &lt;pre&gt;{@code
+ * CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+ *         .failureRateThreshold(0.5)
+ *         .minimumNumberOfCalls(10)
+ *         .waitDuration(Duration.ofSeconds(30))
+ *         .build();
+ * CircuitBreaker breaker = new CircuitBreaker(config);
+ *
+ * String body = breaker.callWithFallback(() -&gt; client.fetch(), error -&gt; &quot;default&quot;);
+ * }&lt;/pre&gt;
+ *
+ * &lt;p&gt;Which exceptions count as failures is controlled by the configuration (see
+ * {@link CircuitBreakerConfig}). State changes can be observed with
+ * {@link #addListener(StateTransitionListener)}.
+ *
+ * &lt;p&gt;This class is thread-safe. State transitions are performed with compare-and-set, so each
+ * transition happens, and is reported to listeners, exactly once.
+ */
+
+public class CircuitBreaker {
+<span class="fc" id="L47">    private static final Logger LOG= Logger.getLogger(CircuitBreaker.class.getName());</span>
+
+    private final CircuitBreakerConfig config;
+    private final LongSupplier nanoClock;
+
+<span class="fc" id="L52">    private final AtomicReference&lt;State&gt; state = new AtomicReference&lt;&gt;(State.CLOSED);</span>
+    private final SlidingWindow slidingWindow;
+<span class="fc" id="L54">    private final AtomicLong openedAtNanos = new AtomicLong(0L);</span>
+
+    //half-open bookkeeping
+<span class="fc" id="L57">    private final AtomicInteger halfOpenPermitsRemaining = new AtomicInteger(0);</span>
+<span class="fc" id="L58">    private final AtomicInteger halfOpenSuccesses = new AtomicInteger(0);</span>
+
+<span class="fc" id="L60">    private final List&lt;StateTransitionListener&gt; listeners = new CopyOnWriteArrayList&lt;&gt;();</span>
+
+    public CircuitBreaker(CircuitBreakerConfig config) {
+<span class="nc" id="L63">        this(config, System::nanoTime);</span>
+<span class="nc" id="L64">    }</span>
+
+    //constructor
+<span class="fc" id="L67">    CircuitBreaker(CircuitBreakerConfig config, LongSupplier nanoClock) {</span>
+<span class="fc" id="L68">        this.config = Objects.requireNonNull(config, &quot;config&quot;);</span>
+<span class="fc" id="L69">        this.nanoClock = Objects.requireNonNull(nanoClock, &quot;nanoClock&quot;);</span>
+<span class="fc" id="L70">        this.slidingWindow = new SlidingWindow(config.getSlidingWindowSizeInSeconds(), nanoClock);</span>
+<span class="fc" id="L71">    }</span>
+
+    public void addListener(StateTransitionListener listener) {
+<span class="fc" id="L74">        listeners.add(Objects.requireNonNull(listener, &quot;listener&quot;));</span>
+<span class="fc" id="L75">    }</span>
+
+    public void removeListener(StateTransitionListener listener) {
+<span class="fc" id="L78">        listeners.remove(listener);</span>
+<span class="fc" id="L79">    }</span>
+
+    public State getState() {
+<span class="fc" id="L82">        return state.get();</span>
+    }
+
+    boolean tryAcquirePermission() {
+<span class="fc" id="L86">        State current = state.get();</span>
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (current == State.CLOSED) {</span>
+<span class="fc" id="L89">            return true;</span>
+        }
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (current == State.OPEN) {</span>
+<span class="fc" id="L93">            long elapsed = nanoClock.getAsLong() - openedAtNanos.get();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (elapsed &lt; config.getWaitDurationNanos()) {</span>
+<span class="fc" id="L95">                return false;</span>
+            }
+            // Transition to HALF_OPEN
+<span class="fc" id="L98">            transition(State.OPEN, State.HALF_OPEN, TransitionReason.WAIT_DURATION_ELAPSED, ()-&gt;{</span>
+<span class="fc" id="L99">                halfOpenPermitsRemaining.set(config.getPermittedCallsInHalfOpen());</span>
+<span class="fc" id="L100">                halfOpenSuccesses.set(0);</span>
+<span class="fc" id="L101">            });</span>
+
+<span class="fc" id="L103">            current = state.get();</span>
+
+        }
+
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (current == State.HALF_OPEN) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            int before = halfOpenPermitsRemaining.getAndUpdate(p-&gt; p &gt; 0 ? p-1 : p);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            return before &gt; 0;</span>
+        }
+
+<span class="nc" id="L112">        return false;</span>
+    }
+
+    void onSuccess() {
+<span class="fc" id="L116">        State current = state.get();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (current == State.HALF_OPEN) {</span>
+<span class="fc" id="L118">            int successes = halfOpenSuccesses.incrementAndGet();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (successes == config.getPermittedCallsInHalfOpen()) {</span>
+<span class="fc" id="L120">                slidingWindow.reset();</span>
+<span class="fc" id="L121">                transition(State.HALF_OPEN, State.CLOSED, TransitionReason.PROBES_SUCCEEDED);</span>
+
+            }
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        } else  if (current == State.CLOSED){</span>
+<span class="fc" id="L125">            slidingWindow.recordSuccess();</span>
+        }
+<span class="fc" id="L127">    }</span>
+
+    void onFailure() {
+<span class="fc" id="L130">        State current = state.get();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (current == State.HALF_OPEN) {</span>
+<span class="fc" id="L132">            tripToOpen(State.HALF_OPEN, TransitionReason.PROBE_FAILED);</span>
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        } else if (current == State.CLOSED) {</span>
+<span class="fc" id="L135">            slidingWindow.recordFailure();</span>
+<span class="fc" id="L136">            checkAndTripIfNecessary();</span>
+        }
+<span class="fc" id="L138">    }</span>
+
+    void onError(Throwable t) {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (config.isRecordedAsFailure(t)) {</span>
+<span class="fc" id="L142">            onFailure();</span>
+        } else {
+<span class="fc" id="L144">            onIgnored();</span>
+        }
+<span class="fc" id="L146">    }</span>
+
+    void onIgnored() {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">       if (state.get() == State.HALF_OPEN) {</span>
+<span class="fc" id="L150">            halfOpenPermitsRemaining.incrementAndGet();</span>
+        }
+<span class="fc" id="L152">    }</span>
+    //check if need to trip the circuit breaker to OPEN state based on failure rate or failure count
+    private void checkAndTripIfNecessary() {
+<span class="fc" id="L155">        SlidingWindow.Snapshot snapshot = slidingWindow.getSnapshot();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (snapshot.getTotalCalls() &lt; config.getMinimumNumberOfCalls()) {</span>
+<span class="fc" id="L157">            return;</span>
+        }
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (snapshot.getFailureRate() &gt;= config.getFailureRateThreshold()) {</span>
+<span class="fc" id="L160">            tripToOpen(State.CLOSED, TransitionReason.FAILURE_RATE_EXCEEDED);</span>
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        } else if (snapshot.getTotalFailure() &gt;= config.getFailureThreshold()) {</span>
+<span class="fc" id="L163">            tripToOpen(State.CLOSED, TransitionReason.FAILURE_COUNT_EXCEEDED);</span>
+        }
+
+<span class="fc" id="L166">    }</span>
+    void tripToOpen(State from, TransitionReason reason) {
+<span class="fc" id="L168">        openedAtNanos.set(nanoClock.getAsLong());</span>
+<span class="fc" id="L169">        transition(from, State.OPEN, reason);</span>
+<span class="fc" id="L170">    }</span>
+
+    boolean transition(State from, State to, TransitionReason reason) {
+<span class="fc" id="L173">        return transition(from, to, reason, null);</span>
+    }
+
+    boolean transition(State from, State to, TransitionReason reason, Runnable afterCas) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!state.compareAndSet(from, to)) {</span>
+<span class="fc" id="L178">            return false;</span>
+        }
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (afterCas != null) {</span>
+<span class="fc" id="L181">            afterCas.run();</span>
+        }
+<span class="fc" id="L183">        publish(new StateTransitionEvent(from, to, reason, nanoClock.getAsLong()));</span>
+<span class="fc" id="L184">        return true;</span>
+    }
+
+    void publish(StateTransitionEvent event) {
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (StateTransitionListener listener : listeners) {</span>
+            try {
+<span class="fc" id="L190">                listener.onStateTransition(event);</span>
+
+<span class="fc" id="L192">            }catch (Exception e) {</span>
+<span class="fc" id="L193">                LOG.log(Level.WARNING, &quot;StateTransitionListener failed for &quot; + event, e);</span>
+<span class="fc" id="L194">            }</span>
+<span class="fc" id="L195">        }</span>
+<span class="fc" id="L196">    }</span>
+
+
+    public &lt;T&gt; T call(Supplier&lt;T&gt; downstreamCall) {
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (downstreamCall == null) {</span>
+<span class="nc" id="L201">            throw new IllegalArgumentException(&quot;downstreamCall is null&quot;);</span>
+        }
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (!tryAcquirePermission()) {</span>
+<span class="fc" id="L204">            throw new CallNotPermittedException(&quot;circuit breaker is &quot; + state.get()</span>
+            + &quot; --call rejected&quot;);
+        }
+        //got permission
+        T result;
+        try {
+<span class="fc" id="L210">            result = downstreamCall.get();</span>
+<span class="fc" id="L211">        }catch (Throwable t) {</span>
+<span class="fc" id="L212">            onError(t);</span>
+<span class="fc" id="L213">            throw t;</span>
+<span class="fc" id="L214">        }</span>
+<span class="fc" id="L215">        onSuccess();</span>
+<span class="fc" id="L216">        return result;</span>
+    }
+
+    public &lt;T&gt; T callWithFallback(Supplier&lt;T&gt; downstreamCall, Function&lt;? super Throwable, ? extends T&gt; fallback) {
+        try {
+<span class="fc" id="L221">            return call(downstreamCall);</span>
+<span class="fc" id="L222">        }catch (CallNotPermittedException e) {</span>
+<span class="fc" id="L223">            return fallback.apply(e);</span>
+<span class="fc" id="L224">        }catch (Throwable t) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if (config.isRecordedAsFailure(t)) {</span>
+<span class="fc" id="L226">                return fallback.apply(t);</span>
+            }
+<span class="fc" id="L228">            throw t;</span>
+        }
+
+    }
+
+
+
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

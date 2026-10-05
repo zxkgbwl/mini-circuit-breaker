@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CircuitBreakerConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">mini-circuit-breaker</a> &gt; <a href="index.source.html" class="el_package">com.george.circuitbreaker.core</a> &gt; <span class="el_source">CircuitBreakerConfig.java</span></div><h1>CircuitBreakerConfig.java</h1><pre class="source lang-java linenums">package com.george.circuitbreaker.core;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
+
+public final class CircuitBreakerConfig {
+
+    private final int failureThreshold;
+    private final double failureRateThreshold;      //threshold of failure rate to trigger stats change.
+    private final int minimumNumberOfCalls;        //mini calls which could trigger the aval
+    private final int slidingWindowSizeInSeconds; // sliding window size
+    private final long waitDurationNanos;
+    private final int permittedCallsInHalfOpen;
+    private final Predicate&lt;Throwable&gt; failureFilter;
+
+<span class="fc" id="L20">    private CircuitBreakerConfig(Builder b) {</span>
+<span class="fc" id="L21">        this.failureThreshold = b.failureThreshold;</span>
+<span class="fc" id="L22">        this.failureRateThreshold = b.failureRateThreshold;</span>
+<span class="fc" id="L23">        this.minimumNumberOfCalls = b.minimumNumberOfCalls;</span>
+<span class="fc" id="L24">        this.slidingWindowSizeInSeconds = b.slidingWindowSizeInSeconds;</span>
+<span class="fc" id="L25">        this.waitDurationNanos = b.waitDurationNanos;</span>
+<span class="fc" id="L26">        this.permittedCallsInHalfOpen = b.permittedCallsInHalfOpen;</span>
+<span class="fc" id="L27">        this.failureFilter = b.composePredicate();</span>
+
+<span class="fc" id="L29">    }</span>
+    public boolean isRecordedAsFailure(Throwable t) {
+<span class="fc" id="L31">        return failureFilter.test(t);</span>
+    }
+
+    public int getFailureThreshold() {
+<span class="fc" id="L35">        return failureThreshold;</span>
+    }
+
+    public double getFailureRateThreshold() {
+<span class="fc" id="L39">        return failureRateThreshold;</span>
+    }
+
+    public int getMinimumNumberOfCalls() {
+<span class="fc" id="L43">        return minimumNumberOfCalls;</span>
+    }
+
+    public int getSlidingWindowSizeInSeconds() {
+<span class="fc" id="L47">        return slidingWindowSizeInSeconds;</span>
+    }
+
+    public long getWaitDurationNanos() {
+<span class="fc" id="L51">        return waitDurationNanos;</span>
+    }
+
+    public int getPermittedCallsInHalfOpen() {
+<span class="fc" id="L55">        return permittedCallsInHalfOpen;</span>
+    }
+
+    public static  Builder builder() {
+<span class="fc" id="L59">        return new Builder();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L64">        return &quot;CircuitBreakerConfig{failureThreshold=&quot; + failureThreshold</span>
+                + &quot;, failureRateThreshold=&quot; + failureRateThreshold
+                + &quot;, minimumNumberOfCalls=&quot; + minimumNumberOfCalls
+                + &quot;, slidingWindowSizeInSeconds=&quot; + slidingWindowSizeInSeconds
+<span class="nc" id="L68">                + &quot;, waitDuration=&quot; + Duration.ofNanos(waitDurationNanos)</span>
+                + &quot;, permittedCallsInHalfOpen=&quot; + permittedCallsInHalfOpen + '}';
+    }
+
+
+    public static final class Builder {
+<span class="fc" id="L74">        private int failureThreshold = 5;</span>
+<span class="fc" id="L75">        private double failureRateThreshold = 0.5;</span>
+<span class="fc" id="L76">        private int minimumNumberOfCalls = 5;</span>
+<span class="fc" id="L77">        private int slidingWindowSizeInSeconds = 5;</span>
+<span class="fc" id="L78">        private long waitDurationNanos = Duration.ofSeconds(10).toNanos();</span>
+<span class="fc" id="L79">        private int permittedCallsInHalfOpen = 3;</span>
+        //exception in recordException will be counted as the failure
+<span class="fc" id="L81">        private final List&lt;Class&lt;? extends Throwable&gt;&gt; recordExceptions = new ArrayList&lt;&gt;();</span>
+        //exception in ignoreException will NOT be counted as the failure
+<span class="fc" id="L83">        private final List&lt;Class&lt;? extends Throwable&gt;&gt; ignoreExceptions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L84">        private Predicate&lt;Throwable&gt; recordFailurePredicate = t -&gt; true;</span>
+
+<span class="fc" id="L86">        private Builder() {</span>
+
+<span class="fc" id="L88">        }</span>
+
+
+        public Builder failureThreshold(int n) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (n &lt;= 0) {</span>
+<span class="fc" id="L93">                throw new IllegalArgumentException(&quot;failureThreshold must be positive&quot;);</span>
+            }
+<span class="fc" id="L95">            this.failureThreshold = n;</span>
+<span class="fc" id="L96">            return this;</span>
+
+        }
+
+        public Builder failureRateThreshold(double failureRateThreshold) {
+<span class="fc bfc" id="L101" title="All 6 branches covered.">            if (Double.isNaN(failureRateThreshold) || failureRateThreshold &lt;= 0.0 || failureRateThreshold &gt; 1.0) {</span>
+<span class="fc" id="L102">                throw new IllegalArgumentException(&quot;failureRateThreshold must be between 0 and 1&quot;);</span>
+            }
+<span class="fc" id="L104">            this.failureRateThreshold = failureRateThreshold;</span>
+<span class="fc" id="L105">            return this;</span>
+        }
+
+        public Builder minimumNumberOfCalls(int n) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (n &lt;= 0) {</span>
+<span class="fc" id="L110">                throw new IllegalArgumentException(&quot;minimumNumberOfCalls must be positive&quot;);</span>
+            }
+<span class="fc" id="L112">            this.minimumNumberOfCalls = n;</span>
+<span class="fc" id="L113">            return this;</span>
+        }
+
+        public Builder slidingWindowSizeInSeconds(int seconds) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (seconds &lt; 1) {</span>
+<span class="fc" id="L118">                throw new IllegalArgumentException(&quot;slidingWindowSizeInSeconds must be positive&quot;);</span>
+            }
+<span class="fc" id="L120">            this.slidingWindowSizeInSeconds = seconds;</span>
+<span class="fc" id="L121">            return this;</span>
+        }
+
+        public Builder waitDuration(Duration d) {
+<span class="fc" id="L125">            Objects.requireNonNull(d, &quot;waitDuration&quot;);</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">            if (d == null || d.compareTo(Duration.ZERO) &lt;= 0) {</span>
+<span class="fc" id="L127">                throw new NullPointerException(&quot;waitDuration must be positive&quot;);</span>
+            }
+<span class="fc" id="L129">            this.waitDurationNanos = d.toNanos();</span>
+<span class="fc" id="L130">            return this;</span>
+        }
+
+        public Builder permittedCallsInHalfOpen(int n) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (n &lt;= 0) {</span>
+<span class="fc" id="L135">                throw new IllegalArgumentException(&quot;permittedCallsInHalfOpen must be positive&quot;);</span>
+            }
+<span class="fc" id="L137">            this.permittedCallsInHalfOpen = n;</span>
+<span class="fc" id="L138">            return this;</span>
+        }
+
+        public CircuitBreakerConfig build() {
+<span class="fc" id="L142">            return new CircuitBreakerConfig(this);</span>
+        }
+
+        @SafeVarargs
+        public final Builder recordExceptions(Class&lt;? extends Throwable&gt;... types) {
+<span class="fc" id="L147">            addAll(recordExceptions,types, &quot;recordException&quot;);</span>
+<span class="fc" id="L148">            return this;</span>
+        }
+
+        @SafeVarargs
+        public final Builder ignoreExceptions(Class&lt;? extends Throwable&gt;... types) {
+<span class="fc" id="L153">            addAll(ignoreExceptions, types, &quot;ignoreException&quot;);</span>
+<span class="fc" id="L154">            return this;</span>
+        }
+
+        public Builder recordFailurePredicate(Predicate&lt;Throwable&gt; p) {
+<span class="fc" id="L158">            this.recordFailurePredicate = Objects.requireNonNull(p,&quot;predicate&quot;);</span>
+<span class="fc" id="L159">            return this;</span>
+        }
+        //----------------------------------internals--------------------------
+        private static void addAll(List&lt;Class&lt;? extends Throwable&gt;&gt; target,
+                                   Class&lt;? extends Throwable&gt;[] types, String name) {
+<span class="fc" id="L164">            Objects.requireNonNull(types, name);</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            for (Class&lt;? extends Throwable&gt; type : types) {</span>
+                // Reject null now: a null here would otherwise blow up later, inside the call path.
+<span class="fc" id="L167">                target.add(Objects.requireNonNull(type, name + &quot; must not contain null&quot;));</span>
+            }
+<span class="fc" id="L169">        }</span>
+
+
+
+        private Predicate&lt;Throwable&gt; composePredicate() {
+<span class="fc" id="L174">            List&lt;Class&lt;? extends Throwable&gt;&gt; record= List.copyOf(recordExceptions);</span>
+<span class="fc" id="L175">            List&lt;Class&lt;? extends Throwable&gt;&gt; ignore= List.copyOf(ignoreExceptions);</span>
+<span class="fc" id="L176">            Predicate&lt;Throwable&gt; custom = recordFailurePredicate;</span>
+
+<span class="fc" id="L178">            return t -&gt; {</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                if (matchesAny(ignore,t)) return false;</span>
+<span class="fc bfc" id="L180" title="All 4 branches covered.">                if (!record.isEmpty() &amp;&amp; !matchesAny(record, t)) return false;</span>
+<span class="fc" id="L181">                return custom.test(t);</span>
+            };
+        }
+
+        private static boolean matchesAny(List&lt;Class&lt;? extends Throwable&gt;&gt; types, Throwable t) {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            for (Class&lt;? extends Throwable&gt; type : types) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                if (type.isInstance(t)) {</span>
+<span class="fc" id="L188">                    return true;</span>
+                }
+<span class="fc" id="L190">            }</span>
+<span class="fc" id="L191">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,12 @@
+com\george\circuitbreaker\core\StateTransitionListener.class
+com\george\circuitbreaker\core\CallNotPermittedException.class
+com\george\circuitbreaker\core\CircuitBreakerConfig.class
+com\george\circuitbreaker\core\SlidingWindow.class
+com\george\circuitbreaker\core\TransitionReason.class
+com\george\circuitbreaker\core\LoggingStateTransitionsListener.class
+com\george\circuitbreaker\core\SlidingWindow$Bucket.class
+com\george\circuitbreaker\core\State.class
+com\george\circuitbreaker\core\StateTransitionEvent.class
+com\george\circuitbreaker\core\CircuitBreaker.class
+com\george\circuitbreaker\core\CircuitBreakerConfig$Builder.class
+com\george\circuitbreaker\core\SlidingWindow$Snapshot.class
